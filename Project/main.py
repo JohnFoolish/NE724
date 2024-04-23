@@ -57,7 +57,7 @@ def update_node(params, node, bal_u = -123456):
     #Update the T, v, Re, Pr u for node
     steamTable = XSteam(XSteam.UNIT_SYSTEM_FLS)
     if bal_u == -123456:
-        node.set_nrg(steamTable.u_pt(params.rv.p, params.rv.T_out), params.rv.p)
+        node.set_nrg(steamTable.u_pt(params.rv.p, params.rv.T_out-5), params.rv.p)
         nrg =  steamTable.u_pt(params.rv.p, params.rv.T_out) * 2325.99999994858 #btu/lbm to j/kg
     else:
         node.set_nrg(bal_u, params.rv.p)
@@ -65,8 +65,8 @@ def update_node(params, node, bal_u = -123456):
     p = params.rv.p * 6894.75729 #psig to Pa
     TC = Fluid(FluidsList.Water).with_state(Input.pressure(p), Input.internal_energy(nrg)).temperature
     #TC = scipy.optimize.fsolve(find_newTC, params.rv.T_out, args=[params.rv.p, nrg])[0]
-
-    node.T = TC#TC*9/5+32
+#params.rv.T_out#
+    node.T = TC*9/5+32#params.rv.T_out#TC*9/5+32
     node.v = steamTable.my_pt(params.rv.p, node.T) # lb/ft-h
     node.Re = (node.m*node.D)/(node.A*node.v)
     node.Pr = node.v*steamTable.Cp_pt(params.rv.p, node.T)/steamTable.tc_pt(params.rv.p, node.T)
@@ -122,6 +122,7 @@ def fill_params(params):
     sg = st.steam_generator()
     params.rv = rv
     params.sg = sg
+    params.p = rv.p
 
 #Create your very own PWR!
 def make_pwr(num_loops):
@@ -166,7 +167,7 @@ def step_massflux(params, loops, core):
     core.dp = dP_dt
     update_state(params, loops, core)
     return params, loops, core  
-    
+       
 def balance_nrg(params, loops, core):
     inputs = []
     funcs = []
@@ -185,8 +186,52 @@ def balance_nrg(params, loops, core):
         if type(node0) == list:
             node0 = node0[loop]
             loop += 1
-       
-    inputs, it, hist, converge = iterate(inputs, funcs, params, node_ids, 1e-5, params.dt, loops, core)  
+    
+    diff = 10e10
+#    new_inputs = [i for i in funcs]
+    org_nrg = [i.nrg for i in funcs]
+    
+    while diff > .001:
+        diffs = []
+        data  = []
+        start_nrg = [i.nrg for i in funcs]
+        #prev_nrg = [i.prev.nrg for i in funcs]
+        #print('---')
+        for i, node in enumerate(funcs):
+            q = 0
+            if node.name == 'sg':
+                q = node.q_dot_sg(params)
+            elif node.name == 'core':
+                q = node.q_dot_core(params)
+            grow = org_nrg[i]*node.l*node.A*node.get_rho(params.p)/(params.dt/(60*60))#/100
+            grow_nou = node.l*node.A*node.get_rho(params.p)/(params.dt/(60*60))#/100
+            if node.name == 'up':
+                new_u = (q+node.prev.m*node.prev.nrg+grow)/(node.m+grow_nou)
+            elif node.name == 'lp':
+                new_u = (q+node.prev[0].m*node.prev[0].nrg+node.prev[1].m*3*node.prev[1].nrg+grow)/(node.m+grow_nou)
+                new_u = (node.prev[0].nrg + 3*node.prev[1].nrg)/4
+            elif node.prev.name == 'up':
+                new_u = node.prev.nrg#(q+node.prev.m*node.prev.nrg/4+grow)/(node.m+grow_nou)
+            elif node.name == 'cl' or node.name == 'dc':
+                new_u = node.prev.nrg
+            else:
+                new_u = (q+node.prev.m*node.prev.nrg+grow)/(node.m+grow_nou)
+            node.nrg = new_u
+            update_node(params, node, new_u)
+            diffs.append(new_u)
+            if len(node.prev) > 1:
+                data.append((node.prev[0].node_id, node.prev[1].node_id, node.node_id))
+            else:
+                data.append((node.prev.node_id,node.node_id))
+            #print(node.name, node.nrg, node.m, grow, grow_nou, q, node.node_id)
+        #for node in funcs:
+         #   print(node.nrg, node.n)
+
+        diff = np.linalg.norm(np.array(start_nrg)-np.array(diffs))
+        #print('---')
+    #print('break')
+    inputs = [i.nrg for i in funcs]
+    #inputs, it, hist, converge = iterate(inputs, funcs, params, node_ids, 1e-5, params.dt, loops, core)  
     #print(inputs, it, converge)
     loop = 1 
     node0 = loops[0].loop[0]
@@ -296,19 +341,32 @@ if __name__ == '__main__':
     from newtonRaphson import iterate 
     #assemble the reactor for the problem 
     core, loops, all_params = make_pwr(2)
+    all_params.sgf = 0.0001
     for loop in loops:
-        loop.rcp_p_r = 4225 #guess and check method
+        loop.rcp_p_r = 6100#4253 #guess and check method
     core, loops, all_params, node_ids = balance_nrg(all_params, loops, core)
     loop_list = get_loop_list(loops)
     #get_dP_pump(core, loops, all_params)
-    all_params, loops, core = step_massflux(all_params, loops, core)
+    #all_params, loops, core = step_massflux(all_params, loops, core)
     #grapher(core, loops, all_params)
     #sgf = find_eta(core, loops, all_params)
     #print(sgf)
-    all_params.sgf = 0.001#0.0022308#sgf
-    run_secs = 1
+    all_nodes_list = []
+    loop_id = 1
+    node_first = loops[0].loop[0]
+    all_nodes_list.append(node_first)
+    node0 = node_first.next
+    while node0.n != 16 or loop_id < 2:
+        all_nodes_list.append(node0)
+        node0 = node0.next
+        if type(node0) == list:
+            node0 = node0[loop_id]
+            loop_id += 1
+    all_params.sgf = 0.0039#2308#sgf
+    run_secs = 18
     its = int(round(run_secs/all_params.dt, 0))
     mflux = [loops[0].loop[0].m]
+    nrg = [loops[0].loop[0].nrg]
     diff = 1e10
     it = 0
     #while np.abs(diff) > 1e-3 and it < 1e4:
@@ -316,17 +374,23 @@ if __name__ == '__main__':
         all_params, loops, core = step_massflux(all_params, loops, core)
         core, loops, all_params, node_ids = balance_nrg(all_params, loops, core)
         mflux.append(loops[0].loop[0].m)
+        nrg.append(loops[0].loop[0].nrg)
         diff = mflux[-1] - mflux[-2]
         it += 1 
-
-        #print(mflux[-1])
+        if np.mod(it, 500) == 0:
+            plt.plot([i.n for i in all_nodes_list], [i.nrg for i in all_nodes_list], label=f'{it}')
         
-            
+            print(mflux[-1])
+    plt.legend()
+    print(nrg[-1])       
     print(loops[0].m_flux, loops[0].m_flux_0)
     print(core.m_flux, all_params.rv.mass_flux*52.74)
     print(loops[1].m_flux)
+    plt.figure()
     plt.plot(mflux)
     plt.show()
+    plt.figure()
+    plt.plot(nrg)
     #grapher(core, loops, all_params)
 
 
