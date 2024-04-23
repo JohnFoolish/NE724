@@ -11,6 +11,7 @@ class params():
         self.node_id = 0 
         self.n_loops = 4
         self.dt = 1e-2
+        self.p = None
         self.time_since_scram = 0
         self.rv = None
         self.up = None
@@ -146,6 +147,7 @@ class node_base():
         self.m = None
         self.dP = None
         self.Pr = None
+        self.og_nrg = None
     def __len__(self):
         return 1
     def set_nrg(self, new_nrg, P):
@@ -168,8 +170,8 @@ class node_base():
             count1, = np.where(np.array(node_ids) == self.next[0].node_id)[0]
             count2, = np.where(np.array(node_ids) == self.next[1].node_id)[0]
             count_m, = np.where(np.array(node_ids) == self.prev.node_id)[0]
-            u_dt_p = self.next[0].nrg #inputs[count1] 
-            u_dt_p2 = self.next[1].nrg#inputs[count2]*3
+            u_dt_p = inputs[count1] 
+            u_dt_p2 = inputs[count2]*3
             m_dt = self.m
             u_dt = inputs[counter]
             u_dt_m = inputs[count_m]
@@ -178,8 +180,8 @@ class node_base():
             count1, = np.where(np.array(node_ids) == self.prev[0].node_id)[0]
             count2, = np.where(np.array(node_ids) == self.prev[1].node_id)[0]
             count_p, = np.where(np.array(node_ids) == self.next.node_id)[0]
-            u_dt_m = self.prev[0].nrg#inputs[count1] 
-            u_dt_m2 = self.prev[1].nrg#inputs[count2]*3
+            u_dt_m = inputs[count1] 
+            u_dt_m2 = inputs[count2]*3
             m_dt = self.m
             u_dt = inputs[counter]
             u_dt_p = inputs[count_p]
@@ -189,8 +191,8 @@ class node_base():
             counter_m, = np.where(np.array(node_ids) == self.prev.node_id)[0]
             m_dt = self.m    
             u_dt = inputs[counter]
-            u_dt_p = self.next.nrg#inputs[counter_p]
-            u_dt_m = self.prev.nrg#inputs[counter_m]
+            u_dt_p = inputs[counter_p]
+            u_dt_m = inputs[counter_m]
             #if self.next.n == 15:
             #    u_dt_p = inputs[0]
             #    u_dt_m = inputs[counter-1]            
@@ -221,10 +223,10 @@ class node_base():
         Tsat = steamTable.tsat_p(P)
         #Calculate heat exchanger area
         k_water = steamTable.tc_pt(params.rv.p, self.T)
-        h = k_water*(0.023*self.Re**0.8*self.Pr**3)/self.D
-        AX = (params.sg.sg_tubes*params.sg.sg_t_id*np.pi*self.l)/(1/h + params.sgf)
+        h = k_water*(0.023*self.Re**0.8*self.Pr**3)/self.D#+1000
+        AX = (params.sg.sg_tubes*params.sg.sg_t_id*np.pi*self.l)/(1/h + params.sgf)        
         qdot = AX*(Tsat - self.T)
-        return qdot
+        return qdot#*50
     def q_dot_core(self, params):
         #use for core nodes to get the heat flow in 
         MW = params.rv.MW*3412142.450123 #BTU /hr
@@ -381,16 +383,16 @@ class core():
 
 
 
-if __name__ == '__main__':
-    all_params = params()  
-    loops_nodes = [6,7,8,9,10,11,12,13,14,15]
-    loopA = loop(loops_nodes, all_params)
-    loopB = loop(loops_nodes, all_params)
-    loopC = loop(loops_nodes, all_params)
-    loopD = loop(loops_nodes, all_params)
+#if __name__ == '__main__':
+#    all_params = params()  
+#    loops_nodes = [6,7,8,9,10,11,12,13,14,15]
+#    loopA = loop(loops_nodes, all_params)
+#    loopB = loop(loops_nodes, all_params)
+#    loopC = loop(loops_nodes, all_params)
+#    loopD = loop(loops_nodes, all_params)
     
-    core_nodes = [16, 1, 2, 3, 4, 5]
-    core = core(core_nodes, all_params)
+#    core_nodes = [16, 1, 2, 3, 4, 5]
+#    core = core(core_nodes, all_params)
 
 
 

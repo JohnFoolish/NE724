@@ -57,10 +57,10 @@ def update_node(params, node, bal_u = -123456):
     #Update the T, v, Re, Pr u for node
     steamTable = XSteam(XSteam.UNIT_SYSTEM_FLS)
     if bal_u == -123456:
-        node.set_nrg(steamTable.u_pt(params.rv.p, params.rv.T_out-5), params.rv.p)
+        node.set_nrg(round(steamTable.u_pt(params.rv.p, params.rv.T_out-5),4), params.rv.p)
         nrg =  steamTable.u_pt(params.rv.p, params.rv.T_out) * 2325.99999994858 #btu/lbm to j/kg
     else:
-        node.set_nrg(bal_u, params.rv.p)
+        node.set_nrg(round(bal_u,4), params.rv.p)
         nrg = bal_u *2325.99999994858 #btu/lbm to j/kg
     p = params.rv.p * 6894.75729 #psig to Pa
     TC = Fluid(FluidsList.Water).with_state(Input.pressure(p), Input.internal_energy(nrg)).temperature
@@ -191,16 +191,16 @@ def balance_nrg(params, loops, core):
 #    new_inputs = [i for i in funcs]
     org_nrg = [i.nrg for i in funcs]
     
-    while diff > .001:
+    while diff > 0.001:
         diffs = []
         data  = []
         start_nrg = [i.nrg for i in funcs]
         #prev_nrg = [i.prev.nrg for i in funcs]
-        #print('---')
+        #print('---')round()
         for i, node in enumerate(funcs):
             q = 0
             if node.name == 'sg':
-                q = node.q_dot_sg(params)
+                q = node.q_dot_sg(params)*20
             elif node.name == 'core':
                 q = node.q_dot_core(params)
             grow = org_nrg[i]*node.l*node.A*node.get_rho(params.p)/(params.dt/(60*60))#/100
@@ -216,8 +216,8 @@ def balance_nrg(params, loops, core):
                 new_u = node.prev.nrg
             else:
                 new_u = (q+node.prev.m*node.prev.nrg+grow)/(node.m+grow_nou)
-            node.nrg = new_u
-            update_node(params, node, new_u)
+            node.nrg = round(new_u,4)
+            update_node(params, node, round(new_u,4))
             diffs.append(new_u)
             if len(node.prev) > 1:
                 data.append((node.prev[0].node_id, node.prev[1].node_id, node.node_id))
@@ -343,7 +343,7 @@ if __name__ == '__main__':
     core, loops, all_params = make_pwr(2)
     all_params.sgf = 0.0001
     for loop in loops:
-        loop.rcp_p_r = 6100#4253 #guess and check method
+        loop.rcp_p_r = 6150#4253 #guess and check method
     core, loops, all_params, node_ids = balance_nrg(all_params, loops, core)
     loop_list = get_loop_list(loops)
     #get_dP_pump(core, loops, all_params)
@@ -362,8 +362,8 @@ if __name__ == '__main__':
         if type(node0) == list:
             node0 = node0[loop_id]
             loop_id += 1
-    all_params.sgf = 0.0039#2308#sgf
-    run_secs = 18
+    all_params.sgf = 0.0042#2308#sgf
+    run_secs = 15
     its = int(round(run_secs/all_params.dt, 0))
     mflux = [loops[0].loop[0].m]
     nrg = [loops[0].loop[0].nrg]
