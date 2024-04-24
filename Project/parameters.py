@@ -26,6 +26,8 @@ class params():
         self.sgf = None
         self.mw = None
         self.beta = None
+        self.adjust = 1
+        self.sg_tubes = None
         self.loops = []
         
         self.all_nodes = {1: ("core",3.0, 0.4635, 52.74, 4988.86, 3.0, -1),
@@ -234,7 +236,11 @@ class node_base():
         #Calculate heat exchanger area
         k_water = steamTable.tc_pt(params.p, self.T)
         h = k_water*(0.023*self.Re**0.8*self.Pr**3)/self.D#+1000
-        AX = (params.sg.sg_tubes*params.sg.sg_t_id*np.pi*self.l)/(1/h + params.sgf)        
+        sg_tubes = params.sg.sg_tubes
+        if self.node_id < 15:
+            sg_tubes = params.sg_tubes
+        
+        AX = (sg_tubes*params.sg.sg_t_id*np.pi*self.l)/(1/h + params.sgf)        
         qdot = AX*(Tsat - self.T)
         return qdot#*50
     def q_dot_core(self, params):

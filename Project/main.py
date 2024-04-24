@@ -101,7 +101,11 @@ def calc_loop_ks(params, nodes, flow = 1):
             node.k += 1 
         #We are going around an elbow 
         elif next_node.n in [10, 11]:
-            node.k += 0.3
+            node.k += 0.3 
+        elif node.name == 'sg' and node.node_id < 15:
+            node.A = node.A*(params.sg_tubes/params.sg.sg_tubes/np.pi)
+            node.k = 2e20#1/(params.sg_tubes/params.sg.sg_tubes)*500000000000000000
+            node.LD += 1/(params.sg_tubes/params.sg.sg_tubes)*5000000000000000
         node.m = params.rv.mass_flux*(52.74)/4    
         update_node(params, node)
 
@@ -126,6 +130,7 @@ def fill_params(params):
     params.sg = sg
     params.p = rv.p
     params.mw = rv.MW
+    params.sg_tubes = sg.sg_tubes
     
 
 #Create your very own PWR!
@@ -202,6 +207,8 @@ def balance_nrg(params, loops, core):
         #prev_nrg = [i.prev.nrg for i in funcs]
         #print('---')round()
         for i, node in enumerate(funcs):
+            prev_node = node.prev 
+
             q = 0
             if node.name == 'sg':
                 q = node.q_dot_sg(params)*20
@@ -210,16 +217,16 @@ def balance_nrg(params, loops, core):
             grow = org_nrg[i]*node.l*node.A*node.get_rho(params.p)/(params.dt/(60*60))#/100
             grow_nou = node.l*node.A*node.get_rho(params.p)/(params.dt/(60*60))#/100
             if node.name == 'up':
-                new_u = (q+node.prev.m*node.prev.nrg+grow)/(node.m+grow_nou)
+                new_u = (q+prev_node.m*prev_node.nrg+grow)/(node.m+grow_nou)
             elif node.name == 'lp':
                 new_u = (q+node.prev[0].m*node.prev[0].nrg+node.prev[1].m*3*node.prev[1].nrg+grow)/(node.m+grow_nou)
-                new_u = (node.prev[0].nrg + 3*node.prev[1].nrg)/4
-            elif node.prev.name == 'up':
-                new_u = node.prev.nrg#(q+node.prev.m*node.prev.nrg/4+grow)/(node.m+grow_nou)
+                new_u = (prev_node[0].nrg + 3*prev_node[1].nrg)/4
+            elif prev_node.name == 'up':
+                new_u = prev_node.nrg#(q+node.prev.m*node.prev.nrg/4+grow)/(node.m+grow_nou)
             elif node.name == 'cl' or node.name == 'dc':
-                new_u = node.prev.nrg
+                new_u = prev_node.nrg
             else:
-                new_u = (q+node.prev.m*node.prev.nrg+grow)/(node.m+grow_nou)
+                new_u = (q+prev_node.m*prev_node.nrg+grow)/(node.m+grow_nou)
             node.nrg = round(new_u,4)
             update_node(params, node, round(new_u,4))
             diffs.append(new_u)
@@ -355,10 +362,12 @@ def find_eta(core, loops, params):
 if __name__ == '__main__':
     from newtonRaphson import iterate 
     #assemble the reactor for the problem 
+    
     core, loops, all_params = make_pwr(2)
     all_params.sgf = 0.0100#1
     all_params.rcp_l1 = 5550
     all_params.rcp_l2 = 5550
+    all_params.sg_tubes = all_params.sg.sg_tubes
     for loop in loops:
         loop.rcp_p_r = 5550#4253 #guess and check method
     core, loops, all_params, node_ids = balance_nrg(all_params, loops, core)
@@ -418,14 +427,17 @@ if __name__ == '__main__':
     it = int(all_params.t/all_params.dt)
     st_time += it
     #initialize pump trip
-    all_params.ptrip = True
-    loops[0].ptrip = True
-    loops[0].rcp_p_r = 0
+    all_params.ptrip = False
+    loops[0].ptrip = False
+    #loops[0].rcp_p_r = 1e-5
 
     loops[1].ptrip = False
     all_params.beta = 3.8 #0.16 for peak core temp
 
-    run_secs = 5
+
+    all_params.sg_tubes = all_params.sg.sg_tubes*0.8
+
+    run_secs = 10
     its = int(round(run_secs/all_params.dt, 0))
     max_iter = its+st_time
     tnper = int(round(max_iter/10,0))
@@ -444,17 +456,18 @@ if __name__ == '__main__':
         #if np.mod(it, 50) == 0:
             #plt.plot([i.n for i in all_nodes_list], [i.nrg for i in all_nodes_list], label=f'{it}')
             #print(mflux[-1])
-        if time_sec[-1] == float(15):
+        if time_sec[-1] == float(15) and all_params.ptrip:
             all_params.trip = True
         if all_params.trip == True:
             all_params.time_since_scram += all_params.dt
         if np.mod(it, tnper) == 0:
             print('X', end='')
             #plt.plot([i.n for i in all_nodes_list], [i.nrg for i in all_nodes_list], label=f'{it}')
-            #print(mflux[-1])
+
     print('|')
-    print(loops[0].m_flux)
-    print(loops[1].m_flux)
+    print('final l1 mass flow', loops[0].m_flux)
+    print('final l2 mass flow',loops[1].m_flux)
+    print('%reduction', loops[0].m_flux/loops[0].m_flux_0)
     print(loops[0].loop[0].m, core.core[-1].T) 
     #grapher(core, loops, all_params)
     #    plt.legend()
