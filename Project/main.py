@@ -164,7 +164,7 @@ def step_massflux(params, loops, core):
         b.append(b1)
     ac, bc = core.momentum(params)
     
-    m1_dt = (b[0]*a[1]+(n-1)*b[0]*ac-(n-1)*b[1]*ac*20+a[1]*b[1]) / (a[0]*a[1]+(n-1)*a[0]*ac+a[1]*ac)
+    m1_dt = (b[0]*a[1]+(n-1)*b[0]*ac-(n-1)*b[1]*ac+a[1]*b[1]) / (a[0]*a[1]+(n-1)*a[0]*ac+a[1]*ac)
     dP_dt = b[0]-a[0]*m1_dt
     m2_dt = (b[1]-dP_dt)/a[1]
     mc_dt = m1_dt + (n-1)*m2_dt
@@ -530,7 +530,7 @@ if __name__ == '__main__':
     plt.figure()
     plt.plot(time_sec, L1, label = 'Loop 1 Tc [F]')
     plt.plot(time_sec, L2, label = 'Loop 2 Tc [F]')    
-    plt.vlines(13, min(L1), max(L2), label = f'{round(all_params.sg.sg_tubes-all_params.sg_tubes,0)} Clogged Pipes', color = 'black', linestyle='--', alpha = 0.3)
+    plt.vlines(13, min(L1), max(L2),  label = 'Pump Trip', color = 'black', linestyle='--', alpha = 0.3)
     plt.xlabel('Time [s]')
     plt.ylabel('Temperature [F]')
     plt.xlim(min_x, max_x)
@@ -552,8 +552,8 @@ if __name__ == '__main__':
     plt.figure()
     plt.plot(time_sec, mflux, label = 'Loop 1 Mass Flow [lbm/hr]')
     plt.plot(time_sec, mflux2, label = 'Loop 2 Mass Flow [lbm/hr]')
-    plt.vlines(13, min(mflux), mflux2[-1], label = f'{round(all_params.sg.sg_tubes-all_params.sg_tubes,0)} Clogged Pipes', color = 'black', linestyle='--', alpha = 0.3)
-    #plt.vlines(15, min(mflux), mflux2[-1], label = 'Scram', color = 'black', linestyle='--', alpha = 0.3)
+    plt.vlines(13, min(mflux), mflux2[-1],  label = 'Pump Trip', color = 'black', linestyle='--', alpha = 0.3)
+    plt.vlines(15, min(mflux), mflux2[-1], label = 'Scram', color = 'black', linestyle='--', alpha = 0.3)
     #plt.hlines(loops[0].m_flux_0*0.9, time_sec[0], time_sec[-1], label = '10% Flow Reduction [lbm/hr]', linestyle='--', color='r')
     plt.xlabel('Time [s]')
     plt.ylabel('Mass Flow [lbm/hr]')
