@@ -102,10 +102,7 @@ def calc_loop_ks(params, nodes, flow = 1):
         #We are going around an elbow 
         elif next_node.n in [10, 11]:
             node.k += 0.3 
-        elif node.name == 'sg' and node.node_id < 15:
-            node.A = node.A*(params.sg_tubes/params.sg.sg_tubes/np.pi)
-            node.k = 2e20#1/(params.sg_tubes/params.sg.sg_tubes)*500000000000000000
-            node.LD += 1/(params.sg_tubes/params.sg.sg_tubes)*5000000000000000
+
         node.m = params.rv.mass_flux*(52.74)/4    
         update_node(params, node)
 
@@ -166,7 +163,8 @@ def step_massflux(params, loops, core):
         a.append(a1)
         b.append(b1)
     ac, bc = core.momentum(params)
-    m1_dt = (b[0]*a[1]+(n-1)*b[0]*ac-(n-1)*b[1]*ac+a[1]*b[1]) / (a[0]*a[1]+(n-1)*a[0]*ac+a[1]*ac)
+    
+    m1_dt = (b[0]*a[1]+(n-1)*b[0]*ac-(n-1)*b[1]*ac*20+a[1]*b[1]) / (a[0]*a[1]+(n-1)*a[0]*ac+a[1]*ac)
     dP_dt = b[0]-a[0]*m1_dt
     m2_dt = (b[1]-dP_dt)/a[1]
     mc_dt = m1_dt + (n-1)*m2_dt
@@ -208,7 +206,10 @@ def balance_nrg(params, loops, core):
         #print('---')round()
         for i, node in enumerate(funcs):
             prev_node = node.prev 
-
+            #if node.node_id < 16 and node.n in [6,7,8,9,10,11,12,13,14,15]:
+            #    node.m = -node.m
+            #    prev_node = node.next
+                
             q = 0
             if node.name == 'sg':
                 q = node.q_dot_sg(params)*20
@@ -218,6 +219,7 @@ def balance_nrg(params, loops, core):
             grow_nou = node.l*node.A*node.get_rho(params.p)/(params.dt/(60*60))#/100
             if node.name == 'up':
                 new_u = (q+prev_node.m*prev_node.nrg+grow)/(node.m+grow_nou)
+                #new_u = (q+prev_node[0].m*prev_node[0].nrg+node[0].m*prev_node[0].nrg+grow)/(node.m+grow_nou)
             elif node.name == 'lp':
                 new_u = (q+node.prev[0].m*node.prev[0].nrg+node.prev[1].m*3*node.prev[1].nrg+grow)/(node.m+grow_nou)
                 new_u = (prev_node[0].nrg + 3*prev_node[1].nrg)/4
@@ -420,34 +422,61 @@ if __name__ == '__main__':
 #        pkl.dump(state_data, fid)
     wall_Ts = []
     wall_Ts.append( [calc_clad_temp(i, all_params) for i in core.core[1:-1]])
+    wall_Ts.append( [calc_clad_temp(i, all_params) for i in core.core[1:-1]])
+    Tcs = [(loops[0].loop[-1].T, loops[1].loop[-1].T)]
+    Tcs.append((loops[0].loop[-1].T, loops[1].loop[-1].T))
     #plt.figure()
+    mflux.append(loops[0].loop[0].m)
+    mflux2 .append(loops[1].loop[0].m)
+    nrg .append(core.core[-1].T)
+    time_sec .append(all_params.t)
     pump_trip = all_params.t
     print(core.m_flux, all_params.rv.mass_flux*52.74)
     print(pump_trip)
     it = int(all_params.t/all_params.dt)
     st_time += it
     #initialize pump trip
-    all_params.ptrip = False
-    loops[0].ptrip = False
-    #loops[0].rcp_p_r = 1e-5
+    all_params.ptrip = True
+    loops[0].ptrip = True
+    loops[0].rcp_p_r = 1e-5
 
     loops[1].ptrip = False
     all_params.beta = 3.8 #0.16 for peak core temp
 
+    #plug sg holes:
+    perc_plug = 1#.87#0.9
+    all_params.sg_tubes = all_params.sg.sg_tubes*perc_plug
+    loop_id = 1
+    node0 = loops[0].loop[0]
+    while node0.n != 16 or loop_id < 2:
+        print(node0.node_id, node0.name)
+        if node0.name == 'sg' and node0.node_id < 15:
+            #node0.LD += node0.LD*1/perc_plug
+            #node0.k += node0.k*1/perc_plug
+            node0.A = node0.A * perc_plug 
+            print('new K', node0.k, node0.LD)
+        node0 = node0.next
+        if type(node0) == list:
+            node0 = node0[loop_id]
+            loop_id += 1 
+    
 
-    all_params.sg_tubes = all_params.sg.sg_tubes*0.8
-
-    run_secs = 10
+    run_secs = 3
     its = int(round(run_secs/all_params.dt, 0))
     max_iter = its+st_time
     tnper = int(round(max_iter/10,0))
     print('Starting Run: ', end='')
+
     for i in range(0+st_time, its+st_time):
+        #print('b:', loops[0].loop[2].k)
+
         step_massflux(all_params, loops, core)
         balance_nrg(all_params, loops, core)
+        #print('a:', loops[0].loop[2].k)
         mflux.append(loops[0].loop[0].m)
         mflux2.append(loops[1].loop[0].m)
         nrg.append(core.core[-1].T)
+        Tcs.append((loops[0].loop[-1].T, loops[1].loop[-1].T))
         it += 1    
         all_params.ptime += all_params.dt
         all_params.t = all_params.dt*it  
@@ -468,6 +497,7 @@ if __name__ == '__main__':
     print('final l1 mass flow', loops[0].m_flux)
     print('final l2 mass flow',loops[1].m_flux)
     print('%reduction', loops[0].m_flux/loops[0].m_flux_0)
+    print('Num Clogged tubes', all_params.sg.sg_tubes-all_params.sg_tubes)
     print(loops[0].loop[0].m, core.core[-1].T) 
     #grapher(core, loops, all_params)
     #    plt.legend()
@@ -491,6 +521,22 @@ if __name__ == '__main__':
         T3.append(it[2])
         T4.append(it[3])
     plt.figure()
+    L1 = []
+    L2 = []
+    for tempy in Tcs:
+        L1.append(tempy[0])
+        L2.append(tempy[1])
+    
+    plt.figure()
+    plt.plot(time_sec, L1, label = 'Loop 1 Tc [F]')
+    plt.plot(time_sec, L2, label = 'Loop 2 Tc [F]')    
+    plt.vlines(13, min(L1), max(L2), label = f'{round(all_params.sg.sg_tubes-all_params.sg_tubes,0)} Clogged Pipes', color = 'black', linestyle='--', alpha = 0.3)
+    plt.xlabel('Time [s]')
+    plt.ylabel('Temperature [F]')
+    plt.xlim(min_x, max_x)
+    plt.legend()
+    plt.show()
+    plt.figure()
     plt.title(f'One Pump Locked Rotor, Beta: {all_params.beta}')
     plt.plot(time_sec, T1, label = 'Node 1 Clad T [F]')
     plt.plot(time_sec, T2, label = 'Node 2 Clad T [F]')
@@ -506,8 +552,9 @@ if __name__ == '__main__':
     plt.figure()
     plt.plot(time_sec, mflux, label = 'Loop 1 Mass Flow [lbm/hr]')
     plt.plot(time_sec, mflux2, label = 'Loop 2 Mass Flow [lbm/hr]')
-    plt.vlines(13, min(mflux), mflux2[-1], label = 'Pump Trip', color = 'black', linestyle='--', alpha = 0.3)
-    plt.vlines(15, min(mflux), mflux2[-1], label = 'Scram', color = 'black', linestyle='--', alpha = 0.3)
+    plt.vlines(13, min(mflux), mflux2[-1], label = f'{round(all_params.sg.sg_tubes-all_params.sg_tubes,0)} Clogged Pipes', color = 'black', linestyle='--', alpha = 0.3)
+    #plt.vlines(15, min(mflux), mflux2[-1], label = 'Scram', color = 'black', linestyle='--', alpha = 0.3)
+    #plt.hlines(loops[0].m_flux_0*0.9, time_sec[0], time_sec[-1], label = '10% Flow Reduction [lbm/hr]', linestyle='--', color='r')
     plt.xlabel('Time [s]')
     plt.ylabel('Mass Flow [lbm/hr]')
     plt.xlim(min_x, max_x)

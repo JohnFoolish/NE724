@@ -312,6 +312,7 @@ class loop():
             elif RCP_dp_r == 1e-5:
                 km = 0.00000001
                 kp = 0.00000001
+                RCP_dp_r = 0
             RCP_dp = (1.094+0.089*G/G_r-0.183*(G/G_r)**2)*RCP_dp_r*(1/(1+t/b))
         self.rcp_p = RCP_dp
         self.pumpk = 1/2*(km+kp) + 1/2*(np.abs(G)/G)*((km-kp))
