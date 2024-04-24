@@ -72,6 +72,7 @@ def update_node(params, node, bal_u = -123456):
     node.Re = (node.m*node.D)/(node.A*node.v)
     node.Pr = node.v*steamTable.Cp_pt(params.p, node.T)/steamTable.tc_pt(params.p, node.T)
     node.f = f(node)  
+    
 
 def update_state(params, loops, core):
     #Updates the mass flux and the T, velocity, reynolds number, and u values
@@ -316,6 +317,15 @@ def get_loop_list(loops):
             loop += 1 
     return show
 
+def calc_clad_temp(node, params):
+    steamTable = XSteam(XSteam.UNIT_SYSTEM_FLS)
+    q = node.q_dot_core(params)
+    wall = params.rv.fuel_rods*np.pi*params.rv.r_d*node.l
+    C = 0.042*(params.rv.rod_pitch/params.rv.r_d)-0.024
+    Nu = C * node.Re**0.8*node.Pr**(1/3)
+    hc = steamTable.tc_pt(params.p, node.T)*Nu/node.D
+    wall_T = q/(hc*wall) + node.T
+    return wall_T
 
 def find_eta(core, loops, params):
     init_core = copy.copy(core)
@@ -372,9 +382,9 @@ if __name__ == '__main__':
         if type(node0) == list:
             node0 = node0[loop_id]
             loop_id += 1
-#    all_params.sgf = 0.0097#100#0.0042
-#    run_secs = 13
-#    its = int(round(run_secs/all_params.dt, 0))
+    all_params.sgf = 0.0097#100#0.0042
+    run_secs = 13
+    its = int(round(run_secs/all_params.dt, 0))
     mflux = [loops[0].loop[0].m]
     mflux2 = [loops[1].loop[0].m]
     nrg = [core.core[-1].T]
@@ -399,17 +409,23 @@ if __name__ == '__main__':
 #    state_data = (all_params, loops, core)
 #    with open('steady_state.pkl', 'wb') as fid:
 #        pkl.dump(state_data, fid)
-    plt.figure()
+    wall_Ts = []
+    wall_Ts.append( [calc_clad_temp(i, all_params) for i in core.core[1:-1]])
+    #plt.figure()
     pump_trip = all_params.t
+    print(core.m_flux, all_params.rv.mass_flux*52.74)
     print(pump_trip)
     it = int(all_params.t/all_params.dt)
     st_time += it
     #initialize pump trip
     all_params.ptrip = True
-    all_params.beta = 0.16
-    #loops[0].rcp_p_r = 0
-    #loops[1].rcp_p_r = 0
-    run_secs = 3
+    loops[0].ptrip = True
+    loops[0].rcp_p_r = 0
+
+    loops[1].ptrip = False
+    all_params.beta = 3.8 #0.16 for peak core temp
+
+    run_secs = 5
     its = int(round(run_secs/all_params.dt, 0))
     max_iter = its+st_time
     tnper = int(round(max_iter/10,0))
@@ -417,8 +433,6 @@ if __name__ == '__main__':
     for i in range(0+st_time, its+st_time):
         step_massflux(all_params, loops, core)
         balance_nrg(all_params, loops, core)
-#        all_params, loops, core = step_massflux(all_params, loops, core)
-#        core, loops, all_params, node_ids = balance_nrg(all_params, loops, core)
         mflux.append(loops[0].loop[0].m)
         mflux2.append(loops[1].loop[0].m)
         nrg.append(core.core[-1].T)
@@ -426,22 +440,25 @@ if __name__ == '__main__':
         all_params.ptime += all_params.dt
         all_params.t = all_params.dt*it  
         time_sec.append(it*all_params.dt)
+        wall_Ts.append( [calc_clad_temp(i, all_params) for i in core.core[1:-1]])
         #if np.mod(it, 50) == 0:
             #plt.plot([i.n for i in all_nodes_list], [i.nrg for i in all_nodes_list], label=f'{it}')
             #print(mflux[-1])
-        if round(all_params.ptime,0) == float(2):
+        if time_sec[-1] == float(15):
             all_params.trip = True
         if all_params.trip == True:
             all_params.time_since_scram += all_params.dt
         if np.mod(it, tnper) == 0:
             print('X', end='')
-            plt.plot([i.n for i in all_nodes_list], [i.nrg for i in all_nodes_list], label=f'{it}')
+            #plt.plot([i.n for i in all_nodes_list], [i.nrg for i in all_nodes_list], label=f'{it}')
             #print(mflux[-1])
     print('|')
+    print(loops[0].m_flux)
+    print(loops[1].m_flux)
     print(loops[0].loop[0].m, core.core[-1].T) 
     #grapher(core, loops, all_params)
     #    plt.legend()
-    plt.legend()
+    #plt.legend()
     min_x = pump_trip-1 
     max_x = all_params.t
     steamTable = XSteam(XSteam.UNIT_SYSTEM_FLS)
@@ -451,16 +468,43 @@ if __name__ == '__main__':
     print(loops[0].m_flux, loops[0].m_flux_0)
     print(core.m_flux, all_params.rv.mass_flux*52.74)
     print(loops[1].m_flux)
+    T1 = []
+    T2 = []
+    T3 = []
+    T4 = []
+    for it in wall_Ts:
+        T1.append(it[0])
+        T2.append(it[1])
+        T3.append(it[2])
+        T4.append(it[3])
+    plt.figure()
+    plt.title(f'One Pump Locked Rotor, Beta: {all_params.beta}')
+    plt.plot(time_sec, T1, label = 'Node 1 Clad T [F]')
+    plt.plot(time_sec, T2, label = 'Node 2 Clad T [F]')
+    plt.plot(time_sec, T3, label = 'Node 3 Clad T [F]')
+    plt.plot(time_sec, T4, label = 'Node 4 Clad T [F]')
+    plt.vlines(13, min(T1), Tsat, label = 'Pump Trip', color = 'black', linestyle='--', alpha = 0.3)
+    plt.vlines(15, min(T1), Tsat, label = 'Scram', color = 'black', linestyle='--', alpha = 0.3)
+    plt.hlines(Tsat, time_sec[0], time_sec[-1], label = f'Saturation Temp = {round(Tsat,1)} [F]', linestyle='--', color='r')
+    plt.xlabel('Time [s]')
+    plt.ylabel('Temperature [F]')
+    plt.xlim(min_x, max_x)
+    plt.legend()
     plt.figure()
     plt.plot(time_sec, mflux, label = 'Loop 1 Mass Flow [lbm/hr]')
     plt.plot(time_sec, mflux2, label = 'Loop 2 Mass Flow [lbm/hr]')
+    plt.vlines(13, min(mflux), mflux2[-1], label = 'Pump Trip', color = 'black', linestyle='--', alpha = 0.3)
+    plt.vlines(15, min(mflux), mflux2[-1], label = 'Scram', color = 'black', linestyle='--', alpha = 0.3)
     plt.xlabel('Time [s]')
     plt.ylabel('Mass Flow [lbm/hr]')
     plt.xlim(min_x, max_x)
+    plt.legend()
     plt.show()
     plt.figure()
     plt.plot(time_sec, nrg, label = 'Core Exit Temp [F]')
-    plt.hlines(Tsat, time_sec[0], time_sec[-1], label = f'Saturation Temp = {round(Tsat,1)} [F]')
+    plt.hlines(Tsat, time_sec[0], time_sec[-1], label = f'Saturation Temp = {round(Tsat,1)} [F]', linestyle='--', color='r')
+    plt.vlines(13, min(nrg), Tsat, label = 'Pump Trip', color = 'black', linestyle='--', alpha = 0.3)
+    plt.vlines(15, min(nrg), Tsat, label = 'Scram', color = 'black', linestyle='--', alpha = 0.3)
     plt.xlabel('Time [s]')
     plt.ylabel('Temperature [F]')
     plt.xlim(min_x, max_x)

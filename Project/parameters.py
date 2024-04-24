@@ -265,7 +265,7 @@ class loop():
     def  __init__(self, loops_nodes, params):
         self.loop = []
         self.m_flux = params.rv.mass_flux*52.74/params.n_loops
-       
+        self.ptrip = False
         self.m_flux_0 = params.rv.mass_flux*52.74/params.n_loops #Should be nominal steady state mass flux
         for node in loops_nodes:
             node_id = params.node_id
@@ -292,15 +292,23 @@ class loop():
     def get_pump_curve(self, params, RCP_dp_r, trip=0, t = 0, b = 0):
         G = self.m_flux
         G_r = self.m_flux_0
-        
-        if not params.ptrip:
+        km = 0.01
+        kp = 1e6        
+        if not self.ptrip:
             RCP_dp = (1.094+0.089*G/G_r-0.183*(G/G_r)**2)*RCP_dp_r
+
         else:
             t = params.ptime
             b = params.beta
+            if RCP_dp_r == 0:
+                km = 1e9
+                kp = 1e9
+            elif RCP_dp_r == 1e-5:
+                km = 0.00000001
+                kp = 0.00000001
             RCP_dp = (1.094+0.089*G/G_r-0.183*(G/G_r)**2)*RCP_dp_r*(1/(1+t/b))
         self.rcp_p = RCP_dp
-        self.pumpk = 1/2*(0.01+1e6) + 1/2*(np.abs(G)/G)*((0.01-1e6))
+        self.pumpk = 1/2*(km+kp) + 1/2*(np.abs(G)/G)*((km-kp))
 
     def momentum(self, param):
         #some way to solve the momentum balance for the nodes?
