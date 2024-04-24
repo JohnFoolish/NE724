@@ -11,13 +11,21 @@ class params():
         self.node_id = 0 
         self.n_loops = 4
         self.dt = 1e-2
+        self.t = 0
+        self.rcp_l1 = None
+        self.rcp_l2 = None
         self.p = None
+        self.trip = False
+        self.ptrip = False
+        self.ptime = 0
         self.time_since_scram = 0
         self.rv = None
         self.up = None
         self.lp = None
         self.sg = None
-        self.sgf = 0.0022308
+        self.sgf = None
+        self.mw = None
+        self.beta = None
         self.loops = []
         
         self.all_nodes = {1: ("core",3.0, 0.4635, 52.74, 4988.86, 3.0, -1),
@@ -41,6 +49,8 @@ class params():
                3: 1.414,
                4: 0.586}
         self.core_nodes = len(self.PDF)
+        
+
 class fuel_rod():
     def __init__(self):
         self.r_d = 0.374/12 
@@ -155,7 +165,7 @@ class node_base():
         self.nrg = new_nrg
     def int_nrg(self, params, inputs, node_ids):
         dt = params.dt/(60*60)
-        P = params.rv.p
+        P = params.p
         rho = self.get_rho(P)
         V = self.l*self.A
         u = self.nrg
@@ -222,7 +232,7 @@ class node_base():
         P = params.sg.sg_p
         Tsat = steamTable.tsat_p(P)
         #Calculate heat exchanger area
-        k_water = steamTable.tc_pt(params.rv.p, self.T)
+        k_water = steamTable.tc_pt(params.p, self.T)
         h = k_water*(0.023*self.Re**0.8*self.Pr**3)/self.D#+1000
         AX = (params.sg.sg_tubes*params.sg.sg_t_id*np.pi*self.l)/(1/h + params.sgf)        
         qdot = AX*(Tsat - self.T)
@@ -232,6 +242,10 @@ class node_base():
         MW = params.rv.MW*3412142.450123 #BTU /hr
         pdf = params.PDF[self.n]
         n = params.core_nodes
+        if params.trip:
+            ts = params.time_since_scram
+            t = params.t
+            return MW/n*pdf*0.0622*(ts**(-0.2)-(t)**(-0.2))
         return MW/n*pdf
     def clad_temp(self, params):
         #use for core nodes to get their clad temp 
@@ -278,9 +292,12 @@ class loop():
     def get_pump_curve(self, params, RCP_dp_r, trip=0, t = 0, b = 0):
         G = self.m_flux
         G_r = self.m_flux_0
-        if not trip:
+        
+        if not params.ptrip:
             RCP_dp = (1.094+0.089*G/G_r-0.183*(G/G_r)**2)*RCP_dp_r
         else:
+            t = params.ptime
+            b = params.beta
             RCP_dp = (1.094+0.089*G/G_r-0.183*(G/G_r)**2)*RCP_dp_r*(1/(1+t/b))
         self.rcp_p = RCP_dp
         self.pumpk = 1/2*(0.01+1e6) + 1/2*(np.abs(G)/G)*((0.01-1e6))
@@ -307,7 +324,7 @@ class loop():
         b = 1 * node_length * self.m_flux + (node_darby+node_geom)*self.m_flux**2-node_pres + self.rcp_p
         return a, b    
     def get_dP(self, params):
-        P = params.rv.p
+        P = params.p
         node_darby = 0
         node_geom = 0
         node_pres = 0
@@ -357,7 +374,7 @@ class core():
         return a, b
         
     def get_dP(self, params):
-        P = params.rv.p
+        P = params.p
         node_darby = 0
         node_geom = 0
         node_pres = 0

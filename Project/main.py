@@ -13,6 +13,7 @@ import scipy
 import copy
 from pyXSteam.XSteam import XSteam
 from pyfluids import Fluid, FluidsList, Input
+import pickle as pkl
 #User Defined classes/functions
 
 import parameters as st
@@ -57,19 +58,19 @@ def update_node(params, node, bal_u = -123456):
     #Update the T, v, Re, Pr u for node
     steamTable = XSteam(XSteam.UNIT_SYSTEM_FLS)
     if bal_u == -123456:
-        node.set_nrg(round(steamTable.u_pt(params.rv.p, params.rv.T_out-5),4), params.rv.p)
-        nrg =  steamTable.u_pt(params.rv.p, params.rv.T_out) * 2325.99999994858 #btu/lbm to j/kg
+        node.set_nrg(round(steamTable.u_pt(params.p, params.rv.T_out-5),4), params.p)
+        nrg =  steamTable.u_pt(params.p, params.rv.T_out) * 2325.99999994858 #btu/lbm to j/kg
     else:
-        node.set_nrg(round(bal_u,4), params.rv.p)
+        node.set_nrg(round(bal_u,4), params.p)
         nrg = bal_u *2325.99999994858 #btu/lbm to j/kg
-    p = params.rv.p * 6894.75729 #psig to Pa
+    p = params.p * 6894.75729 #psig to Pa
     TC = Fluid(FluidsList.Water).with_state(Input.pressure(p), Input.internal_energy(nrg)).temperature
     #TC = scipy.optimize.fsolve(find_newTC, params.rv.T_out, args=[params.rv.p, nrg])[0]
 #params.rv.T_out#
     node.T = TC*9/5+32#params.rv.T_out#TC*9/5+32
-    node.v = steamTable.my_pt(params.rv.p, node.T) # lb/ft-h
+    node.v = steamTable.my_pt(params.p, node.T) # lb/ft-h
     node.Re = (node.m*node.D)/(node.A*node.v)
-    node.Pr = node.v*steamTable.Cp_pt(params.rv.p, node.T)/steamTable.tc_pt(params.rv.p, node.T)
+    node.Pr = node.v*steamTable.Cp_pt(params.p, node.T)/steamTable.tc_pt(params.p, node.T)
     node.f = f(node)  
 
 def update_state(params, loops, core):
@@ -123,6 +124,8 @@ def fill_params(params):
     params.rv = rv
     params.sg = sg
     params.p = rv.p
+    params.mw = rv.MW
+    
 
 #Create your very own PWR!
 def make_pwr(num_loops):
@@ -248,7 +251,7 @@ def balance_nrg(params, loops, core):
     return core, loops, params, node_ids
 
 def get_dP_pump(core, loops, params):
-    p = params.rv.p 
+    p = params.p 
     
     node_p = [p]
     dps = []
@@ -267,7 +270,8 @@ def get_dP_pump(core, loops, params):
     print(pump_dP)
     loops[0].get_pump_curve(params, pump_dP)
     loops[1].get_pump_curve(params, pump_dP)      
-    
+
+  
 def grapher(core, loops, params):
     steamTable = XSteam(XSteam.UNIT_SYSTEM_FLS)
     show = []
@@ -312,6 +316,7 @@ def get_loop_list(loops):
             loop += 1 
     return show
 
+
 def find_eta(core, loops, params):
     init_core = copy.copy(core)
     init_loops = copy.copy(loops)
@@ -341,16 +346,21 @@ if __name__ == '__main__':
     from newtonRaphson import iterate 
     #assemble the reactor for the problem 
     core, loops, all_params = make_pwr(2)
-    all_params.sgf = 0.0001
+    all_params.sgf = 0.0100#1
+    all_params.rcp_l1 = 5550
+    all_params.rcp_l2 = 5550
     for loop in loops:
-        loop.rcp_p_r = 6150#4253 #guess and check method
+        loop.rcp_p_r = 5550#4253 #guess and check method
     core, loops, all_params, node_ids = balance_nrg(all_params, loops, core)
     loop_list = get_loop_list(loops)
-    #get_dP_pump(core, loops, all_params)
-    #all_params, loops, core = step_massflux(all_params, loops, core)
-    #grapher(core, loops, all_params)
-    #sgf = find_eta(core, loops, all_params)
-    #print(sgf)
+
+    
+    with open('steady_state.pkl', 'rb') as fid:
+        state_data = pkl.load(fid)   
+        all_params, loops, core = state_data
+    
+    time_sec = [0]
+    st_time = 0
     all_nodes_list = []
     loop_id = 1
     node_first = loops[0].loop[0]
@@ -362,36 +372,100 @@ if __name__ == '__main__':
         if type(node0) == list:
             node0 = node0[loop_id]
             loop_id += 1
-    all_params.sgf = 0.0042#2308#sgf
-    run_secs = 15
-    its = int(round(run_secs/all_params.dt, 0))
+#    all_params.sgf = 0.0097#100#0.0042
+#    run_secs = 13
+#    its = int(round(run_secs/all_params.dt, 0))
     mflux = [loops[0].loop[0].m]
-    nrg = [loops[0].loop[0].nrg]
-    diff = 1e10
-    it = 0
+    mflux2 = [loops[1].loop[0].m]
+    nrg = [core.core[-1].T]
+#    diff = 1e10
+#    it = 0
     #while np.abs(diff) > 1e-3 and it < 1e4:
-    for i in range(0, its):
-        all_params, loops, core = step_massflux(all_params, loops, core)
-        core, loops, all_params, node_ids = balance_nrg(all_params, loops, core)
+#    for i in range(st_time, its):
+#        all_params, loops, core = step_massflux(all_params, loops, core)
+#        core, loops, all_params, node_ids = balance_nrg(all_params, loops, core)
+#        mflux.append(loops[0].loop[0].m)
+#        mflux2.append(loops[1].loop[0].m)
+#        nrg.append(loops[0].loop[0].T)
+#        diff = mflux[-1] - mflux[-2]
+#        it += 1 
+#        time_sec.append(all_params.dt*it)
+#        all_params.t = all_params.dt*it
+#        if np.mod(it, 1000) == 0:
+#            plt.plot([j.n for j in all_nodes_list], [j.nrg for j in all_nodes_list], label=f'{it}')
+#            print(mflux[-1])
+#    plt.plot([i.n for i in all_nodes_list], [i.nrg for i in all_nodes_list], label=f'{it}')
+
+#    state_data = (all_params, loops, core)
+#    with open('steady_state.pkl', 'wb') as fid:
+#        pkl.dump(state_data, fid)
+    plt.figure()
+    pump_trip = all_params.t
+    print(pump_trip)
+    it = int(all_params.t/all_params.dt)
+    st_time += it
+    #initialize pump trip
+    all_params.ptrip = True
+    all_params.beta = 0.16
+    #loops[0].rcp_p_r = 0
+    #loops[1].rcp_p_r = 0
+    run_secs = 3
+    its = int(round(run_secs/all_params.dt, 0))
+    max_iter = its+st_time
+    tnper = int(round(max_iter/10,0))
+    print('Starting Run: ', end='')
+    for i in range(0+st_time, its+st_time):
+        step_massflux(all_params, loops, core)
+        balance_nrg(all_params, loops, core)
+#        all_params, loops, core = step_massflux(all_params, loops, core)
+#        core, loops, all_params, node_ids = balance_nrg(all_params, loops, core)
         mflux.append(loops[0].loop[0].m)
-        nrg.append(loops[0].loop[0].nrg)
-        diff = mflux[-1] - mflux[-2]
-        it += 1 
-        if np.mod(it, 500) == 0:
+        mflux2.append(loops[1].loop[0].m)
+        nrg.append(core.core[-1].T)
+        it += 1    
+        all_params.ptime += all_params.dt
+        all_params.t = all_params.dt*it  
+        time_sec.append(it*all_params.dt)
+        #if np.mod(it, 50) == 0:
+            #plt.plot([i.n for i in all_nodes_list], [i.nrg for i in all_nodes_list], label=f'{it}')
+            #print(mflux[-1])
+        if round(all_params.ptime,0) == float(2):
+            all_params.trip = True
+        if all_params.trip == True:
+            all_params.time_since_scram += all_params.dt
+        if np.mod(it, tnper) == 0:
+            print('X', end='')
             plt.plot([i.n for i in all_nodes_list], [i.nrg for i in all_nodes_list], label=f'{it}')
-        
-            print(mflux[-1])
+            #print(mflux[-1])
+    print('|')
+    print(loops[0].loop[0].m, core.core[-1].T) 
+    #grapher(core, loops, all_params)
+    #    plt.legend()
     plt.legend()
-    print(nrg[-1])       
+    min_x = pump_trip-1 
+    max_x = all_params.t
+    steamTable = XSteam(XSteam.UNIT_SYSTEM_FLS)
+    Tsat = steamTable.tsat_p(all_params.p)
+    print(f' Core inlet temp: {core.core[0].T} Core exit temp: {core.core[-1].T}')
+    print(nrg[-1], core.core[-1].T)       
     print(loops[0].m_flux, loops[0].m_flux_0)
     print(core.m_flux, all_params.rv.mass_flux*52.74)
     print(loops[1].m_flux)
     plt.figure()
-    plt.plot(mflux)
+    plt.plot(time_sec, mflux, label = 'Loop 1 Mass Flow [lbm/hr]')
+    plt.plot(time_sec, mflux2, label = 'Loop 2 Mass Flow [lbm/hr]')
+    plt.xlabel('Time [s]')
+    plt.ylabel('Mass Flow [lbm/hr]')
+    plt.xlim(min_x, max_x)
     plt.show()
     plt.figure()
-    plt.plot(nrg)
-    #grapher(core, loops, all_params)
+    plt.plot(time_sec, nrg, label = 'Core Exit Temp [F]')
+    plt.hlines(Tsat, time_sec[0], time_sec[-1], label = f'Saturation Temp = {round(Tsat,1)} [F]')
+    plt.xlabel('Time [s]')
+    plt.ylabel('Temperature [F]')
+    plt.xlim(min_x, max_x)
+    plt.legend()
+    plt.show()
 
 
 
