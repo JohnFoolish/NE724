@@ -206,10 +206,6 @@ def balance_nrg(params, loops, core):
         #print('---')round()
         for i, node in enumerate(funcs):
             prev_node = node.prev 
-            #if node.node_id < 16 and node.n in [6,7,8,9,10,11,12,13,14,15]:
-            #    node.m = -node.m
-            #    prev_node = node.next
-                
             q = 0
             if node.name == 'sg':
                 q = node.q_dot_sg(params)*20
@@ -219,7 +215,6 @@ def balance_nrg(params, loops, core):
             grow_nou = node.l*node.A*node.get_rho(params.p)/(params.dt/(60*60))#/100
             if node.name == 'up':
                 new_u = (q+prev_node.m*prev_node.nrg+grow)/(node.m+grow_nou)
-                #new_u = (q+prev_node[0].m*prev_node[0].nrg+node[0].m*prev_node[0].nrg+grow)/(node.m+grow_nou)
             elif node.name == 'lp':
                 new_u = (q+node.prev[0].m*node.prev[0].nrg+node.prev[1].m*3*node.prev[1].nrg+grow)/(node.m+grow_nou)
                 new_u = (prev_node[0].nrg + 3*prev_node[1].nrg)/4
@@ -236,10 +231,6 @@ def balance_nrg(params, loops, core):
                 data.append((node.prev[0].node_id, node.prev[1].node_id, node.node_id))
             else:
                 data.append((node.prev.node_id,node.node_id))
-            #print(node.name, node.nrg, node.m, grow, grow_nou, q, node.node_id)
-        #for node in funcs:
-         #   print(node.nrg, node.n)
-
         diff = np.linalg.norm(np.array(start_nrg)-np.array(diffs))
         #print('---')
     #print('break')
@@ -367,14 +358,19 @@ if __name__ == '__main__':
     
     core, loops, all_params = make_pwr(2)
     all_params.sgf = 0.0100#1
-    all_params.rcp_l1 = 5550
-    all_params.rcp_l2 = 5550
+    all_params.rcp_l1 = 5570
+    all_params.rcp_l2 = 5570
     all_params.sg_tubes = all_params.sg.sg_tubes
     for loop in loops:
-        loop.rcp_p_r = 5550#4253 #guess and check method
+        loop.rcp_p_r = 5570#4253 #guess and check method
     core, loops, all_params, node_ids = balance_nrg(all_params, loops, core)
     loop_list = get_loop_list(loops)
+    all_params.ptrip = False
+    loops[0].ptrip = False
+    #loops[0].rcp_p_r = 1e-5
 
+    loops[1].ptrip = False
+    all_params.beta = 3.8
     
     with open('steady_state.pkl', 'rb') as fid:
         state_data = pkl.load(fid)   
@@ -399,24 +395,23 @@ if __name__ == '__main__':
     mflux = [loops[0].loop[0].m]
     mflux2 = [loops[1].loop[0].m]
     nrg = [core.core[-1].T]
-#    diff = 1e10
-#    it = 0
+    diff = 1e10
+    it = 0
     #while np.abs(diff) > 1e-3 and it < 1e4:
-#    for i in range(st_time, its):
-#        all_params, loops, core = step_massflux(all_params, loops, core)
-#        core, loops, all_params, node_ids = balance_nrg(all_params, loops, core)
-#        mflux.append(loops[0].loop[0].m)
-#        mflux2.append(loops[1].loop[0].m)
-#        nrg.append(loops[0].loop[0].T)
-#        diff = mflux[-1] - mflux[-2]
-#        it += 1 
-#        time_sec.append(all_params.dt*it)
-#        all_params.t = all_params.dt*it
-#        if np.mod(it, 1000) == 0:
-#            plt.plot([j.n for j in all_nodes_list], [j.nrg for j in all_nodes_list], label=f'{it}')
-#            print(mflux[-1])
-#    plt.plot([i.n for i in all_nodes_list], [i.nrg for i in all_nodes_list], label=f'{it}')
-
+ #   for i in range(st_time, its):
+ #       all_params, loops, core = step_massflux(all_params, loops, core)
+ #       core, loops, all_params, node_ids = balance_nrg(all_params, loops, core)
+ #       mflux.append(loops[0].loop[0].m)
+ #       mflux2.append(loops[1].loop[0].m)
+ #       nrg.append(loops[0].loop[0].T)
+ #       diff = mflux[-1] - mflux[-2]
+ #       it += 1 
+ #       time_sec.append(all_params.dt*it)
+ #       all_params.t = all_params.dt*it
+ #       if np.mod(it, 1000) == 0:
+ #           plt.plot([j.n for j in all_nodes_list], [j.nrg for j in all_nodes_list], label=f'{it}')
+ #           print(mflux[-1])
+ #   plt.plot([i.n for i in all_nodes_list], [i.nrg for i in all_nodes_list], label=f'{it}')
 #    state_data = (all_params, loops, core)
 #    with open('steady_state.pkl', 'wb') as fid:
 #        pkl.dump(state_data, fid)
@@ -438,13 +433,13 @@ if __name__ == '__main__':
     #initialize pump trip
     all_params.ptrip = True
     loops[0].ptrip = True
-    loops[0].rcp_p_r = 1e-5
+    #loops[0].rcp_p_r = 1e-5
 
     loops[1].ptrip = False
     all_params.beta = 3.8 #0.16 for peak core temp
 
     #plug sg holes:
-    perc_plug = 1#.87#0.9
+    perc_plug = 1#.845#0.9
     all_params.sg_tubes = all_params.sg.sg_tubes*perc_plug
     loop_id = 1
     node0 = loops[0].loop[0]
@@ -461,18 +456,14 @@ if __name__ == '__main__':
             loop_id += 1 
     
 
-    run_secs = 3
+    run_secs = 5
     its = int(round(run_secs/all_params.dt, 0))
     max_iter = its+st_time
-    tnper = int(round(max_iter/10,0))
     print('Starting Run: ', end='')
 
     for i in range(0+st_time, its+st_time):
-        #print('b:', loops[0].loop[2].k)
-
         step_massflux(all_params, loops, core)
         balance_nrg(all_params, loops, core)
-        #print('a:', loops[0].loop[2].k)
         mflux.append(loops[0].loop[0].m)
         mflux2.append(loops[1].loop[0].m)
         nrg.append(core.core[-1].T)
@@ -482,16 +473,11 @@ if __name__ == '__main__':
         all_params.t = all_params.dt*it  
         time_sec.append(it*all_params.dt)
         wall_Ts.append( [calc_clad_temp(i, all_params) for i in core.core[1:-1]])
-        #if np.mod(it, 50) == 0:
-            #plt.plot([i.n for i in all_nodes_list], [i.nrg for i in all_nodes_list], label=f'{it}')
-            #print(mflux[-1])
         if time_sec[-1] == float(15) and all_params.ptrip:
             all_params.trip = True
         if all_params.trip == True:
             all_params.time_since_scram += all_params.dt
-        if np.mod(it, tnper) == 0:
-            print('X', end='')
-            #plt.plot([i.n for i in all_nodes_list], [i.nrg for i in all_nodes_list], label=f'{it}')
+
 
     print('|')
     print('final l1 mass flow', loops[0].m_flux)
@@ -530,7 +516,8 @@ if __name__ == '__main__':
     plt.figure()
     plt.plot(time_sec, L1, label = 'Loop 1 Tc [F]')
     plt.plot(time_sec, L2, label = 'Loop 2 Tc [F]')    
-    plt.vlines(13, min(L1), max(L2),  label = 'Pump Trip', color = 'black', linestyle='--', alpha = 0.3)
+    plt.vlines(13, min(L1), max(L1),  label = 'Pump Trip', color = 'black', linestyle='--', alpha = 0.3)
+    plt.vlines(15, min(L1), max(L1),  label = 'Scram', color = 'black', linestyle='--', alpha = 0.3)
     plt.xlabel('Time [s]')
     plt.ylabel('Temperature [F]')
     plt.xlim(min_x, max_x)
@@ -542,8 +529,8 @@ if __name__ == '__main__':
     plt.plot(time_sec, T2, label = 'Node 2 Clad T [F]')
     plt.plot(time_sec, T3, label = 'Node 3 Clad T [F]')
     plt.plot(time_sec, T4, label = 'Node 4 Clad T [F]')
-    plt.vlines(13, min(T1), Tsat, label = 'Pump Trip', color = 'black', linestyle='--', alpha = 0.3)
-    plt.vlines(15, min(T1), Tsat, label = 'Scram', color = 'black', linestyle='--', alpha = 0.3)
+    plt.vlines(13, min(T1), Tsat, label = 'Clogged Tubes', color = 'black', linestyle='--', alpha = 0.3)
+    #plt.vlines(15, min(T1), Tsat, label = 'Scram', color = 'black', linestyle='--', alpha = 0.3)
     plt.hlines(Tsat, time_sec[0], time_sec[-1], label = f'Saturation Temp = {round(Tsat,1)} [F]', linestyle='--', color='r')
     plt.xlabel('Time [s]')
     plt.ylabel('Temperature [F]')
@@ -552,9 +539,9 @@ if __name__ == '__main__':
     plt.figure()
     plt.plot(time_sec, mflux, label = 'Loop 1 Mass Flow [lbm/hr]')
     plt.plot(time_sec, mflux2, label = 'Loop 2 Mass Flow [lbm/hr]')
-    plt.vlines(13, min(mflux), mflux2[-1],  label = 'Pump Trip', color = 'black', linestyle='--', alpha = 0.3)
-    plt.vlines(15, min(mflux), mflux2[-1], label = 'Scram', color = 'black', linestyle='--', alpha = 0.3)
-    #plt.hlines(loops[0].m_flux_0*0.9, time_sec[0], time_sec[-1], label = '10% Flow Reduction [lbm/hr]', linestyle='--', color='r')
+    plt.vlines(13, min(mflux), mflux2[-1],  label = 'Clogged Tubes', color = 'black', linestyle='--', alpha = 0.3)
+    #plt.vlines(15, min(mflux), mflux2[-1], label = 'Scram', color = 'black', linestyle='--', alpha = 0.3)
+    plt.hlines(loops[0].m_flux_0*0.9, time_sec[0], time_sec[-1], label = '90% Rated Mass Flow [lbm/hr]', linestyle='--', color='r')
     plt.xlabel('Time [s]')
     plt.ylabel('Mass Flow [lbm/hr]')
     plt.xlim(min_x, max_x)
@@ -563,8 +550,8 @@ if __name__ == '__main__':
     plt.figure()
     plt.plot(time_sec, nrg, label = 'Core Exit Temp [F]')
     plt.hlines(Tsat, time_sec[0], time_sec[-1], label = f'Saturation Temp = {round(Tsat,1)} [F]', linestyle='--', color='r')
-    plt.vlines(13, min(nrg), Tsat, label = 'Pump Trip', color = 'black', linestyle='--', alpha = 0.3)
-    plt.vlines(15, min(nrg), Tsat, label = 'Scram', color = 'black', linestyle='--', alpha = 0.3)
+    plt.vlines(13, min(nrg), Tsat, label = 'Clogged Tubes', color = 'black', linestyle='--', alpha = 0.3)
+    #plt.vlines(15, min(nrg), Tsat, label = 'Scram', color = 'black', linestyle='--', alpha = 0.3)
     plt.xlabel('Time [s]')
     plt.ylabel('Temperature [F]')
     plt.xlim(min_x, max_x)

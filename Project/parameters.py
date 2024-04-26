@@ -318,10 +318,8 @@ class loop():
         self.pumpk = 1/2*(km+kp) + 1/2*(np.abs(G)/G)*((km-kp))
 
     def momentum(self, param):
-        #some way to solve the momentum balance for the nodes?
-        dt = param.dt#*(60*60)
+        dt = param.dt
         P = param.rv.p
-        
         node_length = 0
         node_darby = 0
         node_geom = 0
@@ -334,10 +332,10 @@ class loop():
             node_geom += (node.k+node.LD*node.f)/(2*rho*gc)*(1/node.A)**2
             node_pres += rho*node.dH*g/gc*1/144
         node_geom += self.pumpk/(2*rho*gc)*(1/node.A)**2
-
         a = 1 * (node_length) + 2*(node_darby+node_geom)*self.m_flux
         b = 1 * node_length * self.m_flux + (node_darby+node_geom)*self.m_flux**2-node_pres + self.rcp_p
         return a, b    
+    
     def get_dP(self, params):
         P = params.p
         node_darby = 0
